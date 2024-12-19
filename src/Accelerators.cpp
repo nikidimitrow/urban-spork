@@ -326,6 +326,116 @@ struct BVHTree : IntersectionAccelerator {
     }
 };
 
+struct KDTree : IntersectionAccelerator {
+    struct KDNode {
+        BBox box;
+        KDNode *left = nullptr;
+        KDNode *right = nullptr;
+        std::vector<Intersectable*> primitives;
+        bool isLeaf() const {
+            return left == nullptr && right == nullptr;
+        }
+    };
+
+    std::vector<Intersectable*> allPrimitives;
+    KDNode *root = nullptr;
+    int MAX_DEPTH = 35;
+    int MIN_PRIMITIVES = 10;
+
+    void clearNode(KDNode *n) {
+        if (!n) return;
+        clearNode(n->left);
+        clearNode(n->right);
+        delete n;
+    }
+
+    void clear() override {
+        clearNode(root);
+        root = nullptr;
+        allPrimitives.clear();
+    }
+
+    void addPrimitive(Intersectable *prim) override {
+        allPrimitives.push_back(prim);
+    }
+
+    KDNode* buildRecursive(int start, int end, int depth) {
+        KDNode *node = new KDNode();
+        BBox bounds;
+        for (int i = start; i < end; i++) {
+            allPrimitives[i]->expandBox(bounds);
+        }
+        node->box = bounds;
+
+        if (depth >= MAX_DEPTH || end - start <= MIN_PRIMITIVES) {
+            for (int i = start; i < end; i++) {
+                node->primitives.push_back(allPrimitives[i]);
+            }
+            return node;
+        }
+
+        int axis = depth % 3;
+        int mid = (start + end) / 2;
+        std::nth_element(allPrimitives.begin() + start, allPrimitives.begin() + mid, allPrimitives.begin() + end,
+                         [axis](Intersectable *a, Intersectable *b) {
+                             return a->getCentroid()[axis] < b->getCentroid()[axis];
+                         });
+
+        node->left = buildRecursive(start, mid, depth + 1);
+        node->right = buildRecursive(mid, end, depth + 1);
+
+        return node;
+    }
+
+    void build(Purpose purpose) override {
+        if (root) {
+            clear();
+        }
+
+        if (purpose == Purpose::Instances) {
+            MAX_DEPTH = 5;
+            MIN_PRIMITIVES = 4;
+        } else if (purpose == Purpose::Mesh) {
+            MAX_DEPTH = 35;
+            MIN_PRIMITIVES = 20;
+        }
+
+        root = buildRecursive(0, allPrimitives.size(), 0);
+    }
+
+    bool intersectNode(KDNode *node, const Ray &ray, float tMin, float &tMax, Intersection &intersection) {
+        if (!node || !node->box.testIntersect(ray)) return false;
+
+        bool hit = false;
+        if (node->isLeaf()) {
+            for (auto *prim : node->primitives) {
+                if (prim->intersect(ray, tMin, tMax, intersection)) {
+                    tMax = intersection.t;
+                    hit = true;
+                }
+            }
+        } else {
+            bool hitLeft = intersectNode(node->left, ray, tMin, tMax, intersection);
+            bool hitRight = intersectNode(node->right, ray, tMin, tMax, intersection);
+            hit = hitLeft || hitRight;
+        }
+
+        return hit;
+    }
+
+    bool intersect(const Ray &ray, float tMin, float tMax, Intersection &intersection) override {
+        return intersectNode(root, ray, tMin, tMax, intersection);
+    }
+
+    bool isBuilt() const override {
+        return root != nullptr;
+    }
+
+    ~KDTree() override {
+        clear();
+    }
+};
+
 // Factory function to create a default accelerator.
 AcceleratorPtr makeDefaultAccelerator() {
     return AcceleratorPtr(new BVHTree());

@@ -2,6 +2,7 @@
 
 #include "Utils.hpp"
 #include "Material.h"
+#include "Utils.hpp"
 
 #include <vector>
 #include <memory>
@@ -22,6 +23,9 @@ struct Intersectable {
 	/// @param tMax - far clip distance
 	/// @param intersection [out] - data for intersection if one is found
 	/// @return true when intersection is found, false otherwise
+	
+	BBox bbox; 
+	
 	virtual bool intersect(const Ray &ray, float tMin, float tMax, Intersection &intersection) = 0;
 
 	/// @brief Test intersection of the primitive with a box, used by IntersectionAccelerator
@@ -31,6 +35,11 @@ struct Intersectable {
 	/// @brief Expand given bounding box with all points part of the Intersectable
 	/// @param box [out] - the box to expand
 	virtual void expandBox(BBox &box) = 0;
+
+	    // Add this method to return the centroid of the bounding box
+    virtual vec3 getCentroid() const {
+            return (bbox.min + bbox.max) * 0.5f;
+    }
 
 	virtual ~Intersectable() = default;
 };
