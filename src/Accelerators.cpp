@@ -328,20 +328,23 @@ struct BVHTree : IntersectionAccelerator {
 
 struct KDTree : IntersectionAccelerator {
     struct KDNode {
-        BBox box;
-        KDNode *left = nullptr;
-        KDNode *right = nullptr;
-        std::vector<Intersectable*> primitives;
+        BBox box; // Bounding box for the node
+        KDNode *left = nullptr; // Pointer to the left child node
+        KDNode *right = nullptr; // Pointer to the right child node
+        std::vector<Intersectable*> primitives; // List of primitives in the node
+
+        // Check if the node is a leaf node
         bool isLeaf() const {
             return left == nullptr && right == nullptr;
         }
     };
 
-    std::vector<Intersectable*> allPrimitives;
-    KDNode *root = nullptr;
-    int MAX_DEPTH = 35;
-    int MIN_PRIMITIVES = 10;
+    std::vector<Intersectable*> allPrimitives; // List of all primitives in the KDTree
+    KDNode *root = nullptr; // Root node of the KDTree
+    int MAX_DEPTH = 35; // Maximum depth of the tree
+    int MIN_PRIMITIVES = 10; // Minimum number of primitives in a leaf node
 
+    // Recursively clear the nodes of the tree
     void clearNode(KDNode *n) {
         if (!n) return;
         clearNode(n->left);
@@ -349,16 +352,19 @@ struct KDTree : IntersectionAccelerator {
         delete n;
     }
 
+    // Clear the KDTree
     void clear() override {
         clearNode(root);
         root = nullptr;
         allPrimitives.clear();
     }
 
+    // Add a primitive to the list of all primitives
     void addPrimitive(Intersectable *prim) override {
         allPrimitives.push_back(prim);
     }
 
+    // Recursively build the KDTree
     KDNode* buildRecursive(int start, int end, int depth) {
         KDNode *node = new KDNode();
         BBox bounds;
@@ -367,6 +373,7 @@ struct KDTree : IntersectionAccelerator {
         }
         node->box = bounds;
 
+        // If the maximum depth is reached or the number of primitives is below the threshold, create a leaf node
         if (depth >= MAX_DEPTH || end - start <= MIN_PRIMITIVES) {
             for (int i = start; i < end; i++) {
                 node->primitives.push_back(allPrimitives[i]);
@@ -374,24 +381,30 @@ struct KDTree : IntersectionAccelerator {
             return node;
         }
 
+        // Determine the axis to split on
         int axis = depth % 3;
         int mid = (start + end) / 2;
+
+        // Partition the primitives based on the median value along the chosen axis
         std::nth_element(allPrimitives.begin() + start, allPrimitives.begin() + mid, allPrimitives.begin() + end,
                          [axis](Intersectable *a, Intersectable *b) {
-                             return a->getCentroid()[axis] < b->getCentroid()[axis];
-                         });
+                            return a->getCentroid()[axis] < b->getCentroid()[axis];
+                        });
 
+        // Recursively build the left and right child nodes
         node->left = buildRecursive(start, mid, depth + 1);
         node->right = buildRecursive(mid, end, depth + 1);
 
         return node;
     }
 
+    // Build the KDTree
     void build(Purpose purpose) override {
         if (root) {
             clear();
         }
 
+        // Adjust parameters based on the purpose of the KDTree
         if (purpose == Purpose::Instances) {
             MAX_DEPTH = 5;
             MIN_PRIMITIVES = 4;
@@ -400,14 +413,17 @@ struct KDTree : IntersectionAccelerator {
             MIN_PRIMITIVES = 20;
         }
 
+        // Build the tree recursively
         root = buildRecursive(0, allPrimitives.size(), 0);
     }
 
+    // Recursively intersect a ray with the KDTree nodes
     bool intersectNode(KDNode *node, const Ray &ray, float tMin, float &tMax, Intersection &intersection) {
         if (!node || !node->box.testIntersect(ray)) return false;
 
         bool hit = false;
         if (node->isLeaf()) {
+            // Check for intersections with the primitives in the leaf node
             for (auto *prim : node->primitives) {
                 if (prim->intersect(ray, tMin, tMax, intersection)) {
                     tMax = intersection.t;
@@ -415,6 +431,7 @@ struct KDTree : IntersectionAccelerator {
                 }
             }
         } else {
+            // Recursively check for intersections with the left and right child nodes
             bool hitLeft = intersectNode(node->left, ray, tMin, tMax, intersection);
             bool hitRight = intersectNode(node->right, ray, tMin, tMax, intersection);
             hit = hitLeft || hitRight;
@@ -423,14 +440,17 @@ struct KDTree : IntersectionAccelerator {
         return hit;
     }
 
+    // Intersect a ray with the KDTree
     bool intersect(const Ray &ray, float tMin, float tMax, Intersection &intersection) override {
         return intersectNode(root, ray, tMin, tMax, intersection);
     }
 
+    // Check if the KDTree is built
     bool isBuilt() const override {
         return root != nullptr;
     }
 
+    // Destructor to clear the KDTree
     ~KDTree() override {
         clear();
     }
