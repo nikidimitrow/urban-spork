@@ -278,7 +278,7 @@ struct BVHTree : IntersectionAccelerator {
         }
         allPrimitives.swap(sortedPrims);
 
-        printf(" done in %lldms\n", timer.toMs(timer.elapsedNs()));
+		printf(" done in %lldms\n", static_cast<long long>(timer.toMs(timer.elapsedNs())));
     }
 
     // Recursively intersects a ray with the BVH nodes.
